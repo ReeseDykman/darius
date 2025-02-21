@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Excel Uploader (2 Files)</title>
+  <title>Excel Uploader (2 Files, Array Response)</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -39,32 +39,37 @@
     button:hover {
       background: #005fa3;
     }
-    #markdownContainer {
+    #errorMessage {
+      color: red;
+      text-align: center;
+      margin-bottom: 1rem;
+    }
+    /* Each markdown section is clearly distinguished */
+    .markdown-section {
       max-width: 600px;
-      margin: 0 auto;
+      margin: 1rem auto;
       padding: 1rem;
       background: #fff;
       border: 1px solid #ddd;
       border-radius: 4px;
     }
-    #downloadLink {
-      display: block;
-      max-width: 400px;
+    .markdown-section h2 {
+      margin-top: 0;
+    }
+    /* Spinner styles */
+    #spinner {
+      display: none;
       margin: 1rem auto;
-      text-align: center;
-      background: #28a745;
-      color: #fff;
-      padding: 0.5rem;
-      border-radius: 4px;
-      text-decoration: none;
+      border: 6px solid #f3f3f3;
+      border-top: 6px solid #007acc;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
     }
-    #downloadLink:hover {
-      background: #218838;
-    }
-    #errorMessage {
-      color: red;
-      text-align: center;
-      margin-bottom: 1rem;
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
     }
   </style>
 </head>
@@ -72,29 +77,18 @@
   <h1>Upload 2 Excel Files</h1>
   <form id="uploadForm">
     <div id="errorMessage"></div>
-    <!-- Accept multiple files, but we will require exactly 2 -->
+    <!-- Accept multiple files, but require exactly 2 -->
     <input type="file" id="excelFiles" accept=".xls,.xlsx" multiple required>
     <button type="submit">Upload Files</button>
   </form>
 
-  <!-- Markdown will be rendered here -->
+  <!-- Spinner shown while waiting for response -->
+  <div id="spinner"></div>
+
+  <!-- Container for the markdown sections -->
   <div id="markdownContainer"></div>
 
-  <!-- Download link for the processed file -->
-  <a id="downloadLink" style="display:none;">Download Processed File</a>
-
   <script>
-    // Helper function to convert Base64 string to a Blob
-    function base64ToBlob(base64, mime) {
-      const byteCharacters = atob(base64);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      return new Blob([byteArray], { type: mime });
-    }
-
     document.getElementById('uploadForm').addEventListener('submit', async function(e) {
       e.preventDefault();
 
@@ -107,7 +101,11 @@
         return;
       }
 
-      // Prepare the file data in FormData. We'll use the same key for both files.
+      // Show spinner
+      const spinner = document.getElementById('spinner');
+      spinner.style.display = 'block';
+
+      // Prepare the file data in FormData
       const formData = new FormData();
       for (let i = 0; i < fileInput.files.length; i++) {
         formData.append('files', fileInput.files[i]);
@@ -121,28 +119,30 @@
         });
 
         if (!response.ok) {
-          throw new Error('Server responded with an error.');
+          throw new Error(`Server responded with status ${response.status}`);
         }
 
-        // Expect a JSON response with markdown and Base64 encoded excel file
+        // Expect the response to be an array of objects with a `text` field
         const result = await response.json();
 
-        // Render the markdown string on the page
-        document.getElementById('markdownContainer').innerHTML = result.markdown;
+        // Clear any existing markdown content
+        const markdownContainer = document.getElementById('markdownContainer');
+        markdownContainer.innerHTML = '';
 
-        // Convert the Base64 Excel file to a Blob
-        const excelBlob = base64ToBlob(result.excelFile, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        const blobUrl = URL.createObjectURL(excelBlob);
-
-        // Set up the download link for the processed Excel file
-        const downloadLink = document.getElementById('downloadLink');
-        downloadLink.href = blobUrl;
-        downloadLink.download = result.fileName || 'processed.xlsx';
-        downloadLink.style.display = 'block';
+        // Loop through the array and create sections for each markdown string
+        result.forEach((item, index) => {
+          const section = document.createElement('div');
+          section.className = 'markdown-section';
+          section.innerHTML = `<h2>Section ${index + 1}</h2>` + item.text;
+          markdownContainer.appendChild(section);
+        });
 
       } catch (error) {
-        console.error('Error:', error);
+        console.error('Fetch error:', error.name, error.message, error.stack);
         alert('An error occurred while processing the files.');
+      } finally {
+        // Hide spinner when the response is received or on error
+        spinner.style.display = 'none';
       }
     });
   </script>
